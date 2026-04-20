@@ -666,7 +666,17 @@ def main() -> None:
                     "Kontaktfrequenz",
                     "Letzter_Kontakt",
                 ]
-            ],
+            ].rename(
+                columns={
+                    "Aktive_Abo_Kunden": "Aktive Abo-Kunden",
+                    "Kunden_mit_Kontakt": "Kunden mit Kontakt",
+                    "Kunden_ohne_Kontakt_faellig": "Kein Kontakt, fällig",
+                    "Kunden_ohne_Kontakt_in_Schonfrist": "Kein Kontakt, Schonfrist",
+                    "Kontakte_gesamt": "Kontakte gesamt",
+                    "Kontakte_erfolgreich": "Erfolgreiche Kontakte",
+                    "Letzter_Kontakt": "Letzter Kontakt",
+                }
+            ),
             use_container_width=True,
             hide_index=True,
         )
@@ -699,7 +709,22 @@ def main() -> None:
                     "Kontaktfrequenz",
                     "Erfolgsfrequenz",
                 ]
-            ],
+            ].rename(
+                columns={
+                    "Zugewiesen_An": "Zugewiesen an",
+                    "Monate_seit_Erstauftrag": "Monate seit Erstauftrag",
+                    "Abo_Produkte": "Abo-Produkte",
+                    "Anzahl_Abo_Auftraege": "Anzahl Abo-Aufträge",
+                    "Letzter_Kontakt": "Letzter Kontakt",
+                    "Letzter_Kontakt_durch": "Letzter Kontakt durch",
+                    "Letzte_Kontaktart": "Letzte Kontaktart",
+                    "Letzter_erfolgreicher_Kontakt": "Letzter erfolgreicher Kontakt",
+                    "Letzter_Kontaktversuch": "Letzter Kontaktversuch",
+                    "Anzahl_Kontakte": "Anzahl Kontakte",
+                    "Anzahl_Erfolgreich": "Anzahl erfolgreich",
+                    "Anzahl_Versuche": "Anzahl Versuche",
+                }
+            ),
             use_container_width=True,
             hide_index=True,
         )
