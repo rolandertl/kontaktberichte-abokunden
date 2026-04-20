@@ -11,7 +11,11 @@ import streamlit as st
 
 
 BASE_DIR = Path(__file__).resolve().parent
-SELLERS_FILE = BASE_DIR / "aktive Verkäufer.txt"
+SELLERS_FILE_CANDIDATES = [
+    "aktive_verkaeufer.txt",
+    "aktive Verkäufer.txt",
+    "aktive Verkäufer.txt",
+]
 
 SUCCESSFUL_CONTACT_TYPES = {
     "Online Termin vereinbart",
@@ -74,8 +78,38 @@ def normalize_text(value: object) -> str:
     return text
 
 
-def read_sellers(path: Path) -> list[str]:
-    if not path.exists():
+def normalize_filename(value: str) -> str:
+    text = unicodedata.normalize("NFC", value).strip().lower()
+    replacements = {
+        "ä": "ae",
+        "ö": "oe",
+        "ü": "ue",
+        "ß": "ss",
+    }
+    for source, target in replacements.items():
+        text = text.replace(source, target)
+    text = unicodedata.normalize("NFKD", text)
+    text = "".join(char for char in text if not unicodedata.combining(char))
+    text = re.sub(r"[^a-z0-9]+", "", text)
+    return text
+
+
+def resolve_sellers_file() -> Path | None:
+    for candidate in SELLERS_FILE_CANDIDATES:
+        path = BASE_DIR / candidate
+        if path.exists():
+            return path
+
+    expected_names = {normalize_filename(candidate) for candidate in SELLERS_FILE_CANDIDATES}
+    for path in sorted(BASE_DIR.glob("*.txt")):
+        if normalize_filename(path.name) in expected_names:
+            return path
+
+    return None
+
+
+def read_sellers(path: Path | None) -> list[str]:
+    if path is None or not path.exists():
         return []
     return [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
@@ -463,11 +497,13 @@ def main() -> None:
         "und in welchem durchschnittlichen Abstand."
     )
 
-    current_sellers = read_sellers(SELLERS_FILE)
+    sellers_file = resolve_sellers_file()
+    current_sellers = read_sellers(sellers_file)
     if not current_sellers:
+        expected_names = ", ".join(f"`{name}`" for name in SELLERS_FILE_CANDIDATES)
         st.error(
-            f"Die Datei mit aktiven Verkäufern wurde nicht gefunden oder ist leer: {SELLERS_FILE.name}. "
-            "Bitte Datei prüfen."
+            "Die Datei mit aktiven Verkäufern wurde nicht gefunden oder ist leer. "
+            f"Erwartet wird eine TXT-Datei wie {expected_names}."
         )
         st.stop()
 
@@ -487,7 +523,7 @@ def main() -> None:
             type=["csv", "xlsx", "xls"],
             accept_multiple_files=False,
         )
-        st.write(f"Aktive Verkäuferdatei: `{SELLERS_FILE.name}`")
+        st.write(f"Aktive Verkäuferdatei: `{sellers_file.name}`")
         st.write(f"Gefundene Verkäufer: {len(current_sellers)}")
         no_contact_grace_months = st.slider(
             "Schonfrist ohne Kontakt nach Erstauftrag (Monate)",
