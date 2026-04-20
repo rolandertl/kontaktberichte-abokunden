@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import re
 import unicodedata
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -68,6 +69,13 @@ class DataSources:
     contacts_name: str
 
 
+def contact_export_range(contacts: pd.DataFrame) -> tuple[pd.Timestamp | pd.NaT, pd.Timestamp | pd.NaT]:
+    valid = contacts["contact_datetime"].dropna()
+    if valid.empty:
+        return pd.NaT, pd.NaT
+    return valid.min(), valid.max()
+
+
 def normalize_text(value: object) -> str:
     if pd.isna(value):
         return ""
@@ -128,6 +136,18 @@ def decode_csv_bytes(file_bytes: bytes) -> str:
     return file_bytes.decode("latin1", errors="replace")
 
 
+def extract_if_zipped(file_bytes: bytes, filename: str) -> tuple[bytes, str]:
+    if not zipfile.is_zipfile(io.BytesIO(file_bytes)):
+        return file_bytes, filename
+
+    with zipfile.ZipFile(io.BytesIO(file_bytes)) as archive:
+        file_entries = [name for name in archive.namelist() if not name.endswith("/")]
+        if len(file_entries) != 1:
+            raise ValueError(f"Archiv für {filename} enthält nicht genau eine Datei.")
+        inner_name = file_entries[0]
+        return archive.read(inner_name), Path(inner_name).name
+
+
 def load_table(uploaded_file, default_path: Path | None, kind: str) -> tuple[pd.DataFrame, str]:
     if uploaded_file is not None:
         filename = uploaded_file.name
@@ -138,10 +158,18 @@ def load_table(uploaded_file, default_path: Path | None, kind: str) -> tuple[pd.
     else:
         raise FileNotFoundError(f"Keine Datei für {kind} gefunden.")
 
+    file_bytes, detected_name = extract_if_zipped(file_bytes, filename)
+    filename = detected_name or filename
     suffix = Path(filename).suffix.lower()
     if suffix == ".csv":
         csv_text = decode_csv_bytes(file_bytes)
-        dataframe = pd.read_csv(io.StringIO(csv_text), sep=";", dtype=str, keep_default_na=False)
+        dataframe = pd.read_csv(
+            io.StringIO(csv_text),
+            sep=";",
+            dtype=str,
+            keep_default_na=False,
+            engine="python",
+        )
     elif suffix in {".xlsx", ".xls"}:
         dataframe = pd.read_excel(io.BytesIO(file_bytes), dtype=str)
         dataframe = dataframe.fillna("")
@@ -458,6 +486,7 @@ def render_data_overview(
     sellers: list[str],
     sources: DataSources,
     no_contact_grace_months: int,
+    contacts_range: tuple[pd.Timestamp | pd.NaT, pd.Timestamp | pd.NaT],
 ) -> None:
     active_customers = int(customer_summary["Firma"].nunique())
     customers_with_contact = int((customer_summary["Anzahl_Kontakte"] > 0).sum())
@@ -475,6 +504,12 @@ def render_data_overview(
     with st.expander("Verwendete Datenquellen und Matching", expanded=False):
         st.write(f"Aufträge: `{sources.orders_name}`")
         st.write(f"Kontaktberichte: `{sources.contacts_name}`")
+        range_start, range_end = contacts_range
+        if pd.notna(range_start) and pd.notna(range_end):
+            st.write(
+                "Ausgewerteter Zeitraum der Kontaktberichte: "
+                f"`{range_start.strftime('%d.%m.%Y %H:%M')}` bis `{range_end.strftime('%d.%m.%Y %H:%M')}`"
+            )
         st.write(f"Schonfrist für `kein Kontakt`: {no_contact_grace_months} Monate nach Erstauftrag.")
         st.write(
             "Matching-Reihenfolge: zuerst `Kundennummer`, dann `Herold-Nummer`, danach normalisierter Firmenname `Kontakt` zu `Firma`."
@@ -593,6 +628,13 @@ def main() -> None:
         ].copy()
 
     sources = DataSources(orders_name=orders_name, contacts_name=contacts_name)
+    contacts_range = contact_export_range(contacts)
+    range_start, range_end = contacts_range
+    if pd.notna(range_start) and pd.notna(range_end):
+        st.info(
+            "Die Kontakt-Auswertung basiert nur auf dem geladenen Exportzeitraum: "
+            f"{range_start.strftime('%d.%m.%Y %H:%M')} bis {range_end.strftime('%d.%m.%Y %H:%M')}."
+        )
     render_data_overview(
         customer_summary,
         matched_contacts,
@@ -600,6 +642,7 @@ def main() -> None:
         current_sellers,
         sources,
         no_contact_grace_months,
+        contacts_range,
     )
 
     seller_tab, customer_tab, contact_tab = st.tabs(
